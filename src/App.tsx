@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -15,14 +15,17 @@ function App() {
   const [repositoryData, setRepositoryData] = useKV<RepositoryData[]>('repository-data', []);
   const [hasData, setHasData] = useState(false);
 
+  // Update hasData when repositoryData changes
+  useEffect(() => {
+    setHasData(repositoryData.length > 0);
+  }, [repositoryData]);
+
   const handleDataLoaded = (data: RepositoryData[]) => {
     setRepositoryData(data);
-    setHasData(true);
   };
 
   const clearData = () => {
     setRepositoryData([]);
-    setHasData(false);
   };
 
   if (!hasData || repositoryData.length === 0) {
@@ -34,8 +37,8 @@ function App() {
               GitHub Repository Analytics
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Upload your repository CSV data to get comprehensive statistical analysis, 
-              visualizations, and insights about your GitHub repositories.
+              Upload your repository CSV files to get comprehensive statistical analysis, 
+              visualizations, and insights. Multiple files will be automatically combined.
             </p>
           </div>
           
@@ -61,7 +64,7 @@ function App() {
                 onClick={clearData}
                 className="text-sm text-muted-foreground hover:text-foreground underline"
               >
-                Upload new data
+                Upload new files
               </button>
             </div>
           </div>
