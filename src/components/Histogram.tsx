@@ -55,10 +55,8 @@ export function Histogram({ data }: HistogramProps) {
       .filter(val => typeof val === 'number' && !isNaN(val) && val >= 0);
 
     if (rawValues.length === 0) return [];
-
-    const scaledValues = applyScaling(rawValues, scalingMethod);
     
-    // For biaxial chart, we need to bin by original values but include both original and scaled
+    // Keep original values for binning (x-axis remains unchanged)
     const originalSorted = [...rawValues].sort((a, b) => a - b);
     const min = originalSorted[0];
     const max = originalSorted[originalSorted.length - 1];
@@ -70,27 +68,26 @@ export function Histogram({ data }: HistogramProps) {
     const bins = Array.from({ length: binCount }, (_, i) => ({
       range: `${(min + i * binWidth).toFixed(1)}-${(min + (i + 1) * binWidth).toFixed(1)}`,
       originalCount: 0,
-      scaledSum: 0,
       scaledCount: 0,
-      scaledAvg: 0,
       percentage: 0,
       start: min + i * binWidth,
       end: min + (i + 1) * binWidth
     }));
 
-    // Group data by original value bins
-    rawValues.forEach((originalValue, index) => {
-      const scaledValue = scaledValues[index];
+    // Group data by original value bins to get counts
+    rawValues.forEach((originalValue) => {
       const binIndex = Math.min(Math.floor((originalValue - min) / binWidth), binCount - 1);
       bins[binIndex].originalCount++;
-      bins[binIndex].scaledSum += scaledValue;
-      bins[binIndex].scaledCount++;
     });
 
-    // Calculate averages and percentages
+    // Apply feature scaling to the count values, not the property values
+    const counts = bins.map(bin => bin.originalCount);
+    const scaledCounts = applyScaling(counts, scalingMethod);
+
+    // Calculate percentages and assign scaled counts
     const totalCount = rawValues.length;
-    bins.forEach(bin => {
-      bin.scaledAvg = bin.scaledCount > 0 ? bin.scaledSum / bin.scaledCount : 0;
+    bins.forEach((bin, index) => {
+      bin.scaledCount = scaledCounts[index];
       bin.percentage = (bin.originalCount / totalCount) * 100;
     });
 
@@ -167,12 +164,12 @@ export function Histogram({ data }: HistogramProps) {
                 orientation="right"
                 fontSize={12}
                 stroke="oklch(0.70 0.15 45)"
-                label={{ value: 'Scaled Average', angle: 90, position: 'insideRight' }}
+                label={{ value: 'Scaled Count', angle: 90, position: 'insideRight' }}
               />
               <Tooltip 
                 formatter={(value, name) => {
                   if (name === 'originalCount') return [value, 'Original Count'];
-                  if (name === 'scaledAvg') return [Number(value).toFixed(3), 'Scaled Average'];
+                  if (name === 'scaledCount') return [Number(value).toFixed(3), 'Scaled Count'];
                   return [value, name];
                 }}
                 labelFormatter={(label) => `Range: ${label}`}
@@ -192,11 +189,11 @@ export function Histogram({ data }: HistogramProps) {
               />
               <Bar 
                 yAxisId="scaled"
-                dataKey="scaledAvg" 
+                dataKey="scaledCount" 
                 fill="oklch(0.70 0.15 45)" 
                 radius={[4, 4, 0, 0]}
                 style={{ filter: 'drop-shadow(0 1px 2px oklch(0.70 0.15 45 / 0.1))' }}
-                name="scaledAvg"
+                name="scaledCount"
                 opacity={0.7}
               />
             </ComposedChart>
@@ -215,7 +212,7 @@ export function Histogram({ data }: HistogramProps) {
             <TableHead className="text-right">Count</TableHead>
             <TableHead className="text-right">Percentage</TableHead>
             {scalingMethod !== 'none' && (
-              <TableHead className="text-right">Scaled Avg</TableHead>
+              <TableHead className="text-right">Scaled Count</TableHead>
             )}
             <TableHead className="text-right">Cumulative %</TableHead>
           </TableRow>
@@ -233,7 +230,7 @@ export function Histogram({ data }: HistogramProps) {
                 <TableCell className="text-right">{bin.percentage.toFixed(1)}%</TableCell>
                 {scalingMethod !== 'none' && (
                   <TableCell className="text-right text-accent">
-                    {bin.scaledAvg.toFixed(3)}
+                    {bin.scaledCount.toFixed(3)}
                   </TableCell>
                 )}
                 <TableCell className="text-right">{cumulativePercentage.toFixed(1)}%</TableCell>
@@ -314,10 +311,10 @@ export function Histogram({ data }: HistogramProps) {
           {scalingMethod !== 'none' && (
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground text-center bg-muted p-2 rounded">
-                <strong>Scaling Applied:</strong> {
-                  scalingMethod === 'minmax' ? 'Min-Max normalization (values scaled to 0-1 range)' :
-                  scalingMethod === 'zscore' ? 'Z-score standardization (mean=0, std=1)' :
-                  scalingMethod === 'robust' ? 'Robust scaling using median and IQR'
+                <strong>Count Scaling Applied:</strong> {
+                  scalingMethod === 'minmax' ? 'Min-Max normalization applied to bin counts (scaled to 0-1 range)' :
+                  scalingMethod === 'zscore' ? 'Z-score standardization applied to bin counts (mean=0, std=1)' :
+                  scalingMethod === 'robust' ? 'Robust scaling applied to bin counts using median and IQR'
                   : ''
                 }
               </div>
@@ -328,7 +325,7 @@ export function Histogram({ data }: HistogramProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-accent rounded opacity-70"></div>
-                  <span>Scaled Average (Right Axis)</span>
+                  <span>Scaled Count (Right Axis)</span>
                 </div>
               </div>
             </div>
