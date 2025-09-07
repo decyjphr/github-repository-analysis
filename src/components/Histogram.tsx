@@ -13,6 +13,18 @@ interface HistogramProps {
   data: RepositoryData[];
 }
 
+interface HistogramBin {
+  range: string;
+  scaledRange: string;
+  originalCount: number;
+  scaledCount: number;
+  percentage: number;
+  start: number;
+  end: number;
+  scaledStart: number;
+  scaledEnd: number;
+}
+
 type ScalingMethod = 'none' | 'minmax' | 'zscore' | 'robust';
 
 export function Histogram({ data }: HistogramProps) {
@@ -49,45 +61,74 @@ export function Histogram({ data }: HistogramProps) {
     }
   };
 
-  const generateHistogramData = (column: string) => {
+  const generateHistogramData = (column: string): HistogramBin[] => {
     const rawValues = data
       .map(row => (row as any)[column])
       .filter(val => typeof val === 'number' && !isNaN(val) && val >= 0);
 
     if (rawValues.length === 0) return [];
     
-    // Keep original values for binning (x-axis remains unchanged)
+    // Apply feature scaling to the original property values
+    const scaledValues = applyScaling(rawValues, scalingMethod);
+    
+    // Determine min/max for binning - use original values for consistent binning
     const originalSorted = [...rawValues].sort((a, b) => a - b);
     const min = originalSorted[0];
     const max = originalSorted[originalSorted.length - 1];
     
+    // For scaled values, determine their range for scaled bins
+    const scaledSorted = [...scaledValues].sort((a, b) => a - b);
+    const scaledMin = scaledSorted[0];
+    const scaledMax = scaledSorted[scaledSorted.length - 1];
+    
     // Use Sturges' rule for number of bins
     const binCount = Math.max(5, Math.min(20, Math.ceil(Math.log2(rawValues.length) + 1)));
     const binWidth = (max - min) / binCount;
+    const scaledBinWidth = scalingMethod !== 'none' ? (scaledMax - scaledMin) / binCount : binWidth;
 
-    const bins = Array.from({ length: binCount }, (_, i) => ({
-      range: `${(min + i * binWidth).toFixed(1)}-${(min + (i + 1) * binWidth).toFixed(1)}`,
-      originalCount: 0,
-      scaledCount: 0,
-      percentage: 0,
-      start: min + i * binWidth,
-      end: min + (i + 1) * binWidth
-    }));
+    const bins = Array.from({ length: binCount }, (_, i) => {
+      const originalStart = min + i * binWidth;
+      const originalEnd = min + (i + 1) * binWidth;
+      const scaledStart = scalingMethod !== 'none' ? scaledMin + i * scaledBinWidth : originalStart;
+      const scaledEnd = scalingMethod !== 'none' ? scaledMin + (i + 1) * scaledBinWidth : originalEnd;
+      
+      return {
+        range: `${originalStart.toFixed(1)}-${originalEnd.toFixed(1)}`,
+        scaledRange: scalingMethod !== 'none' ? `${scaledStart.toFixed(3)}-${scaledEnd.toFixed(3)}` : `${originalStart.toFixed(1)}-${originalEnd.toFixed(1)}`,
+        originalCount: 0,
+        scaledCount: 0,
+        percentage: 0,
+        start: originalStart,
+        end: originalEnd,
+        scaledStart,
+        scaledEnd
+      };
+    });
 
-    // Group data by original value bins to get counts
+    // Group data by original value bins for original counts
     rawValues.forEach((originalValue) => {
       const binIndex = Math.min(Math.floor((originalValue - min) / binWidth), binCount - 1);
       bins[binIndex].originalCount++;
     });
 
-    // Apply feature scaling to the count values, not the property values
-    const counts = bins.map(bin => bin.originalCount);
-    const scaledCounts = applyScaling(counts, scalingMethod);
+    // Group data by scaled value bins for scaled counts
+    if (scalingMethod !== 'none') {
+      scaledValues.forEach((scaledValue) => {
+        const binIndex = Math.min(Math.floor((scaledValue - scaledMin) / scaledBinWidth), binCount - 1);
+        if (binIndex >= 0 && binIndex < binCount) {
+          bins[binIndex].scaledCount++;
+        }
+      });
+    } else {
+      // When no scaling, scaled count equals original count
+      bins.forEach(bin => {
+        bin.scaledCount = bin.originalCount;
+      });
+    }
 
-    // Calculate percentages and assign scaled counts
+    // Calculate percentages
     const totalCount = rawValues.length;
-    bins.forEach((bin, index) => {
-      bin.scaledCount = scaledCounts[index];
+    bins.forEach((bin) => {
       bin.percentage = (bin.originalCount / totalCount) * 100;
     });
 
@@ -138,7 +179,7 @@ export function Histogram({ data }: HistogramProps) {
         </div>
       );
     } else {
-      // Biaxial chart when scaling is applied
+      // Biaxial chart when scaling is applied - shows distribution of both original and scaled values
       return (
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
@@ -151,28 +192,40 @@ export function Histogram({ data }: HistogramProps) {
                 height={80}
                 fontSize={12}
                 stroke="oklch(0.55 0.12 270)"
+                label={{ value: 'Original Value Range', position: 'insideBottom', offset: -5 }}
               />
               <YAxis 
                 yAxisId="original"
                 orientation="left"
                 fontSize={12}
                 stroke="oklch(0.25 0.08 250)"
-                label={{ value: 'Original Count', angle: -90, position: 'insideLeft' }}
+                label={{ value: 'Count (Original Range)', angle: -90, position: 'insideLeft' }}
               />
               <YAxis 
                 yAxisId="scaled"
                 orientation="right"
                 fontSize={12}
                 stroke="oklch(0.70 0.15 45)"
-                label={{ value: 'Scaled Count', angle: 90, position: 'insideRight' }}
+                label={{ value: 'Count (Scaled Range)', angle: 90, position: 'insideRight' }}
               />
               <Tooltip 
                 formatter={(value, name) => {
-                  if (name === 'originalCount') return [value, 'Original Count'];
-                  if (name === 'scaledCount') return [Number(value).toFixed(3), 'Scaled Count'];
+                  if (name === 'originalCount') return [value, 'Count (Original Values)'];
+                  if (name === 'scaledCount') return [value, 'Count (Scaled Values)'];
                   return [value, name];
                 }}
-                labelFormatter={(label) => `Range: ${label}`}
+                labelFormatter={(label, payload) => {
+                  if (payload && payload.length > 0) {
+                    const data = payload[0].payload;
+                    return (
+                      <div>
+                        <div>Original Range: {label}</div>
+                        <div>Scaled Range: {data.scaledRange}</div>
+                      </div>
+                    );
+                  }
+                  return `Range: ${label}`;
+                }}
                 contentStyle={{
                   backgroundColor: 'oklch(0.98 0 0)',
                   border: '1px solid oklch(0.88 0.02 85)',
@@ -208,12 +261,15 @@ export function Histogram({ data }: HistogramProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Range</TableHead>
-            <TableHead className="text-right">Count</TableHead>
-            <TableHead className="text-right">Percentage</TableHead>
+            <TableHead>Original Range</TableHead>
             {scalingMethod !== 'none' && (
-              <TableHead className="text-right">Scaled Count</TableHead>
+              <TableHead>Scaled Range</TableHead>
             )}
+            <TableHead className="text-right">Count (Original)</TableHead>
+            {scalingMethod !== 'none' && (
+              <TableHead className="text-right">Count (Scaled)</TableHead>
+            )}
+            <TableHead className="text-right">Percentage</TableHead>
             <TableHead className="text-right">Cumulative %</TableHead>
           </TableRow>
         </TableHeader>
@@ -226,13 +282,14 @@ export function Histogram({ data }: HistogramProps) {
             return (
               <TableRow key={index}>
                 <TableCell className="font-mono text-sm">{bin.range}</TableCell>
-                <TableCell className="text-right">{bin.originalCount}</TableCell>
-                <TableCell className="text-right">{bin.percentage.toFixed(1)}%</TableCell>
                 {scalingMethod !== 'none' && (
-                  <TableCell className="text-right text-accent">
-                    {bin.scaledCount.toFixed(3)}
-                  </TableCell>
+                  <TableCell className="font-mono text-sm text-accent">{bin.scaledRange}</TableCell>
                 )}
+                <TableCell className="text-right">{bin.originalCount}</TableCell>
+                {scalingMethod !== 'none' && (
+                  <TableCell className="text-right text-accent">{bin.scaledCount}</TableCell>
+                )}
+                <TableCell className="text-right">{bin.percentage.toFixed(1)}%</TableCell>
                 <TableCell className="text-right">{cumulativePercentage.toFixed(1)}%</TableCell>
               </TableRow>
             );
@@ -311,21 +368,21 @@ export function Histogram({ data }: HistogramProps) {
           {scalingMethod !== 'none' && (
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground text-center bg-muted p-2 rounded">
-                <strong>Count Scaling Applied:</strong> {
-                  scalingMethod === 'minmax' ? 'Min-Max normalization applied to bin counts (scaled to 0-1 range)' :
-                  scalingMethod === 'zscore' ? 'Z-score standardization applied to bin counts (mean=0, std=1)' :
-                  scalingMethod === 'robust' ? 'Robust scaling applied to bin counts using median and IQR'
+                <strong>Value Scaling Applied:</strong> {
+                  scalingMethod === 'minmax' ? 'Min-Max normalization applied to original property values (scaled to 0-1 range)' :
+                  scalingMethod === 'zscore' ? 'Z-score standardization applied to original property values (mean=0, std=1)' :
+                  scalingMethod === 'robust' ? 'Robust scaling applied to original property values using median and IQR'
                   : ''
-                }
+                }. Shows distribution comparison between original and scaled value ranges.
               </div>
               <div className="flex items-center justify-center gap-6 text-xs">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-primary rounded"></div>
-                  <span>Original Count (Left Axis)</span>
+                  <span>Original Values (Left Axis)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-accent rounded opacity-70"></div>
-                  <span>Scaled Count (Right Axis)</span>
+                  <span>Scaled Values (Right Axis)</span>
                 </div>
               </div>
             </div>
