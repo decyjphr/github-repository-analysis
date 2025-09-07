@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { BarChart, TrendingUp, Calculator, Upload as UploadIcon } from '@phosphor-icons/react';
+import { Button } from '@/components/ui/button';
+import { BarChart, TrendingUp, Calculator, Upload as UploadIcon, Lightning } from '@phosphor-icons/react';
 import { CSVUploader } from '@/components/CSVUploader';
 import { StatisticalSummary } from '@/components/StatisticalSummary';
 import { SizeAnalysis } from '@/components/SizeAnalysis';
 import { Histogram } from '@/components/Histogram';
 import { AgeVsSizeScatter } from '@/components/AgeVsSizeScatter';
 import { CommitVsCollaboratorScatter } from '@/components/CommitVsCollaboratorScatter';
+import { PerformanceIndicator } from '@/components/PerformanceIndicator';
 import { RepositoryData } from '@/types/repository';
 
 function App() {
@@ -60,6 +62,12 @@ function App() {
               <Badge variant="secondary" className="text-sm">
                 {repositoryData.length} repositories loaded
               </Badge>
+              {repositoryData.length > 5000 && (
+                <Badge variant="outline" className="text-accent">
+                  <Lightning className="w-3 h-3 mr-1" />
+                  Large dataset - Performance mode enabled
+                </Badge>
+              )}
               <button 
                 onClick={clearData}
                 className="text-sm text-muted-foreground hover:text-foreground underline"
@@ -68,6 +76,16 @@ function App() {
               </button>
             </div>
           </div>
+          {repositoryData.length > 10000 && (
+            <div className="text-right space-y-1">
+              <p className="text-sm text-muted-foreground">
+                Large dataset detected ({repositoryData.length.toLocaleString()} repos)
+              </p>
+              <p className="text-xs text-accent">
+                Charts are automatically optimized for performance
+              </p>
+            </div>
+          )}
         </div>
 
         <Tabs defaultValue="summary" className="space-y-6">
@@ -93,6 +111,13 @@ function App() {
               Correlations
             </TabsTrigger>
           </TabsList>
+
+          {repositoryData.length > 1000 && (
+            <PerformanceIndicator 
+              dataSize={repositoryData.length}
+              optimizationsEnabled={repositoryData.length > 5000}
+            />
+          )}
 
           <TabsContent value="summary" className="space-y-6">
             <StatisticalSummary data={repositoryData} />

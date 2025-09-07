@@ -39,10 +39,32 @@
   - Apply different scaling methods (Min-Max, Z-Score, Robust IQR)
   - Display frequency counts, percentages, and cumulative percentages
 
-### 5. Correlation Analysis
-- **Functionality**: Scatter plots showing relationships between variables (age vs size, commit comments vs collaborators)
-- **Purpose**: Identify correlations and patterns between different repository metrics
-- **Success Criteria**: Clear visualization of relationships with appropriate color coding and axis labeling
+### 6. Performance Optimization System
+- **Functionality**: Automatic performance optimizations for large datasets including data downsampling, async processing, and Web Workers
+- **Purpose**: Ensure smooth user experience even with very large datasets (10,000+ repositories)
+- **Success Criteria**: 
+  - Charts load and respond quickly regardless of dataset size
+  - Performance mode automatically enables for large datasets
+  - User can toggle optimizations on/off
+  - Progress indicators during heavy processing
+  - Graceful fallbacks when Web Workers aren't available
+
+## Performance & Scalability Requirements
+
+### Data Size Handling
+- **Small Datasets** (< 1,000 repos): Full featured experience with all data points
+- **Medium Datasets** (1,000 - 5,000 repos): Automatic async processing with performance warnings
+- **Large Datasets** (5,000 - 10,000 repos): Performance mode enabled by default with downsampling
+- **Very Large Datasets** (10,000+ repos): Web Worker utilization with progressive rendering
+
+### Optimization Techniques Implemented
+1. **Data Downsampling**: LTTB algorithm and systematic sampling to reduce points while preserving visual shape
+2. **Async Processing**: Non-blocking data calculations with loading states
+3. **Virtual Rendering**: Only render visible chart elements
+4. **Progressive Loading**: Incremental data processing for better perceived performance
+5. **Web Workers**: Heavy computations moved to background threads
+6. **Smart Binning**: Optimal bin calculation algorithms for histograms
+7. **Point Deduplication**: Remove overlapping points in scatter plots
 
 ## Design Direction
 

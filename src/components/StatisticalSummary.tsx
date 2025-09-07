@@ -1,23 +1,51 @@
+import { useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { calculateStatistics } from '@/lib/analytics';
 import { RepositoryData, NUMERICAL_COLUMNS } from '@/types/repository';
+import { useAsyncDataProcessing } from '@/hooks/useDataProcessing';
+import { LoadingState } from '@/components/LoadingComponents';
 
 interface StatisticalSummaryProps {
   data: RepositoryData[];
 }
 
 export function StatisticalSummary({ data }: StatisticalSummaryProps) {
-  const stats = NUMERICAL_COLUMNS.map(column => ({
-    column: column.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
-    ...calculateStatistics(data, column)
-  }));
+  const calculateAllStats = useCallback(async () => {
+    // Process statistics for all columns
+    const stats = NUMERICAL_COLUMNS.map(column => ({
+      column: column.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+      ...calculateStatistics(data, column)
+    }));
+    
+    return stats;
+  }, [data]);
+
+  const { processedData: stats, isLoading, error } = useAsyncDataProcessing(
+    data,
+    calculateAllStats,
+    []
+  );
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toLocaleString();
   };
+
+  if (isLoading) {
+    return <LoadingState message="Calculating statistical summary..." />;
+  }
+
+  if (error || !stats) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <p className="text-destructive">Error calculating statistics: {error?.message}</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>

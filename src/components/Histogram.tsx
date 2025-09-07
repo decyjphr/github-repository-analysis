@@ -1,13 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart } from 'recharts';
-import { BarChart as BarChartIcon, Table as TableIcon, Calculator } from '@phosphor-icons/react';
+import { BarChart as BarChartIcon, Table as TableIcon, Calculator, Lightning } from '@phosphor-icons/react';
 import { RepositoryData, NUMERICAL_COLUMNS } from '@/types/repository';
+import { useAsyncDataProcessing } from '@/hooks/useDataProcessing';
+import { LoadingState, DataSizeWarning } from '@/components/LoadingComponents';
+import { calculateOptimalBinCount, aggregateDataIntoBins } from '@/lib/dataOptimization';
 
 interface HistogramProps {
   data: RepositoryData[];
@@ -31,6 +35,8 @@ export function Histogram({ data }: HistogramProps) {
   const [selectedColumn, setSelectedColumn] = useState(NUMERICAL_COLUMNS[0]);
   const [scalingMethod, setScalingMethod] = useState<ScalingMethod>('none');
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
+  const [optimizeData, setOptimizeData] = useState(data.length > 5000);
+  const [forceRender, setForceRender] = useState(false);
 
   const applyScaling = (values: number[], method: ScalingMethod): number[] => {
     if (method === 'none') return values;
@@ -61,7 +67,8 @@ export function Histogram({ data }: HistogramProps) {
     }
   };
 
-  const generateHistogramData = (column: string): HistogramBin[] => {
+  const generateHistogramData = useCallback(async (column: string): Promise<HistogramBin[]> => {
+    // Filter and extract values
     const rawValues = data
       .map(row => (row as any)[column])
       .filter(val => typeof val === 'number' && !isNaN(val) && val >= 0);
@@ -70,6 +77,11 @@ export function Histogram({ data }: HistogramProps) {
     
     // Apply feature scaling to the original property values
     const scaledValues = applyScaling(rawValues, scalingMethod);
+    
+    // Use optimized bin calculation for large datasets
+    const binCount = optimizeData && rawValues.length > 1000 
+      ? calculateOptimalBinCount(rawValues.length, 'freedman')
+      : Math.max(5, Math.min(20, Math.ceil(Math.log2(rawValues.length) + 1)));
     
     // Determine min/max for binning - use original values for consistent binning
     const originalSorted = [...rawValues].sort((a, b) => a - b);
@@ -81,11 +93,41 @@ export function Histogram({ data }: HistogramProps) {
     const scaledMin = scaledSorted[0];
     const scaledMax = scaledSorted[scaledSorted.length - 1];
     
-    // Use Sturges' rule for number of bins
-    const binCount = Math.max(5, Math.min(20, Math.ceil(Math.log2(rawValues.length) + 1)));
     const binWidth = (max - min) / binCount;
     const scaledBinWidth = scalingMethod !== 'none' ? (scaledMax - scaledMin) / binCount : binWidth;
 
+    // Use aggregation for better performance with large datasets
+    if (optimizeData && rawValues.length > 1000) {
+      const bins = aggregateDataIntoBins(
+        rawValues.map((val, idx) => ({ original: val, scaled: scaledValues[idx] })),
+        item => item.original,
+        binCount
+      );
+
+      return bins.map((bin, i) => {
+        const scaledStart = scalingMethod !== 'none' ? scaledMin + i * scaledBinWidth : bin.start;
+        const scaledEnd = scalingMethod !== 'none' ? scaledMin + (i + 1) * scaledBinWidth : bin.end;
+        
+        // Count scaled values in this bin
+        const scaledCount = scalingMethod !== 'none' 
+          ? bin.items.filter(item => item.scaled >= scaledStart && item.scaled < scaledEnd).length
+          : bin.count;
+
+        return {
+          range: `${bin.start.toFixed(1)}-${bin.end.toFixed(1)}`,
+          scaledRange: scalingMethod !== 'none' ? `${scaledStart.toFixed(3)}-${scaledEnd.toFixed(3)}` : `${bin.start.toFixed(1)}-${bin.end.toFixed(1)}`,
+          originalCount: bin.count,
+          scaledCount,
+          percentage: (bin.count / rawValues.length) * 100,
+          start: bin.start,
+          end: bin.end,
+          scaledStart,
+          scaledEnd
+        };
+      });
+    }
+
+    // Original implementation for smaller datasets
     const bins = Array.from({ length: binCount }, (_, i) => {
       const originalStart = min + i * binWidth;
       const originalEnd = min + (i + 1) * binWidth;
@@ -133,11 +175,49 @@ export function Histogram({ data }: HistogramProps) {
     });
 
     return bins;
-  };
+  }, [data, scalingMethod, optimizeData]);
 
-  const histogramData = useMemo(() => generateHistogramData(selectedColumn), [selectedColumn, scalingMethod, data]);
+  const { processedData: histogramData, isLoading, error } = useAsyncDataProcessing(
+    data,
+    () => generateHistogramData(selectedColumn),
+    [selectedColumn, scalingMethod, optimizeData, forceRender]
+  );
+
   const columnName = selectedColumn.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
   const scaledSuffix = scalingMethod !== 'none' ? ` (${scalingMethod} scaled)` : '';
+
+  // Show loading state for large datasets
+  if (isLoading) {
+    return <LoadingState message="Processing histogram data..." />;
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <p className="text-destructive">Error processing data: {error.message}</p>
+          <Button 
+            onClick={() => setForceRender(prev => !prev)} 
+            variant="outline" 
+            className="mt-4"
+          >
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!histogramData || histogramData.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <p className="text-muted-foreground">No data available for the selected column</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const renderChart = () => {
     if (scalingMethod === 'none') {
@@ -330,16 +410,43 @@ export function Histogram({ data }: HistogramProps) {
             </Select>
           </div>
         </CardTitle>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary">
-            {columnName}{scaledSuffix}
-          </Badge>
-          <Badge variant="outline">
-            {histogramData.length} bins
-          </Badge>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">
+              {columnName}{scaledSuffix}
+            </Badge>
+            <Badge variant="outline">
+              {histogramData.length} bins
+            </Badge>
+            {optimizeData && (
+              <Badge variant="outline" className="text-accent">
+                <Lightning className="w-3 h-3 mr-1" />
+                Optimized
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={optimizeData}
+                onCheckedChange={setOptimizeData}
+                id="optimize-data"
+              />
+              <label htmlFor="optimize-data" className="text-sm text-muted-foreground">
+                Performance Mode
+              </label>
+            </div>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
+        <DataSizeWarning
+          dataSize={data.length}
+          threshold={5000}
+          onOptimize={() => setOptimizeData(true)}
+          onProceed={() => setOptimizeData(false)}
+        />
+        
         <Tabs value={viewMode} onValueChange={(value: 'chart' | 'table') => setViewMode(value)} className="space-y-4">
           <TabsList>
             <TabsTrigger value="chart" className="flex items-center gap-2">
@@ -364,6 +471,11 @@ export function Histogram({ data }: HistogramProps) {
         <div className="mt-4 space-y-2">
           <div className="text-sm text-muted-foreground text-center">
             Distribution of {columnName}{scaledSuffix} across {data.length} repositories
+            {optimizeData && data.length > 1000 && (
+              <span className="block text-xs text-accent mt-1">
+                Performance optimizations enabled for large dataset
+              </span>
+            )}
           </div>
           {scalingMethod !== 'none' && (
             <div className="space-y-2">
