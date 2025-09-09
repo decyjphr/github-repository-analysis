@@ -56,12 +56,17 @@ export function useWebWorker() {
       } catch (err) {
         console.warn('Web Worker not supported, falling back to main thread');
         workerRef.current = null;
+        setError(new Error('Web Worker not available'));
       }
     }
 
     return () => {
       if (workerRef.current) {
-        workerRef.current.terminate();
+        try {
+          workerRef.current.terminate();
+        } catch (err) {
+          console.warn('Error terminating worker:', err);
+        }
       }
     };
   }, []);
@@ -84,7 +89,16 @@ export function useWebWorker() {
       promiseRef.current = { resolve, reject };
       
       const message: WorkerMessage = { type, data, config };
-      workerRef.current!.postMessage(message);
+      try {
+        workerRef.current!.postMessage(message);
+      } catch (err) {
+        if (promiseRef.current) {
+          promiseRef.current.reject(err);
+          promiseRef.current = null;
+        }
+        setIsProcessing(false);
+        return;
+      }
       
       // Timeout after 30 seconds
       setTimeout(() => {

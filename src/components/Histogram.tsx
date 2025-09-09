@@ -151,11 +151,11 @@ export function Histogram({ data }: HistogramProps) {
   }, [data, stableSelectedColumn, stableScalingMethod, stableOptimizeData, applyScaling]);
 
   // Stable processing dependencies to prevent hooks order changes
-  const processingDependencies = [
+  const processingDependencies = useMemo(() => [
     stableSelectedColumn, 
     stableScalingMethod, 
     stableOptimizeData
-  ];
+  ], [stableSelectedColumn, stableScalingMethod, stableOptimizeData]);
 
   const { processedData: histogramData, isLoading, error } = useAsyncDataProcessing(
     data,

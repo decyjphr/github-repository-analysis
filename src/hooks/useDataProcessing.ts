@@ -17,11 +17,22 @@ export function useAsyncDataProcessing<T, R>(
   // Memoize dependencies to prevent hooks order changes
   const stableDeps = useMemo(() => {
     if (!Array.isArray(dependencies)) return [];
-    // Ensure stable string representation for comparison
-    return dependencies.map(dep => 
-      typeof dep === 'object' ? JSON.stringify(dep) : String(dep)
-    );
-  }, [JSON.stringify(dependencies)]);
+    // Create a stable key from dependencies with better handling
+    return dependencies.map(dep => {
+      if (dep === null || dep === undefined) return 'null';
+      if (typeof dep === 'boolean') return dep ? 'true' : 'false';
+      if (typeof dep === 'number') return dep.toString();
+      if (typeof dep === 'string') return dep;
+      if (typeof dep === 'object') {
+        try {
+          return JSON.stringify(dep);
+        } catch {
+          return String(dep);
+        }
+      }
+      return String(dep);
+    });
+  }, dependencies);
   
   const dataLength = useMemo(() => data?.length || 0, [data?.length]);
   
@@ -36,8 +47,9 @@ export function useAsyncDataProcessing<T, R>(
     setError(null);
 
     try {
-      // Use setTimeout to avoid blocking the UI thread
+      // Use setTimeout to avoid blocking the UI thread for large datasets
       const result = await new Promise<R>((resolve, reject) => {
+        const timeoutDelay = dataLength > 10000 ? 50 : 10; // Longer delay for large datasets
         setTimeout(async () => {
           try {
             const processed = await processorRef.current();
@@ -45,7 +57,7 @@ export function useAsyncDataProcessing<T, R>(
           } catch (err) {
             reject(err);
           }
-        }, 10);
+        }, timeoutDelay);
       });
 
       setProcessedData(result);
