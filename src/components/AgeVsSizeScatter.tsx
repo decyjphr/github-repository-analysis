@@ -101,10 +101,16 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
     return processedData;
   }, [data, optimizeData, colorRange, enableWebWorker, workerProcess]);
 
+  // Memoize the dependencies array to prevent hooks order changes
+  const processingDependencies = useMemo(() => [
+    optimizeData, 
+    enableWebWorker
+  ], [optimizeData, enableWebWorker]);
+
   const { processedData: rawScatterData, isLoading, error } = useAsyncDataProcessing(
     data,
     processScatterData,
-    [optimizeData, enableWebWorker] // Stable dependencies
+    processingDependencies
   );
 
   // Progressive rendering for smooth loading experience

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -52,10 +52,16 @@ export function CommitVsCollaboratorScatter({ data }: CommitVsCollaboratorScatte
     };
   }, [data, optimizeData]);
 
+  // Memoize the dependencies array to prevent hooks order changes
+  const processingDependencies = useMemo(() => [
+    optimizeData, 
+    forceRender
+  ], [optimizeData, forceRender]);
+
   const { processedData, isLoading, error } = useAsyncDataProcessing(
     data,
     processScatterData,
-    [optimizeData, forceRender]
+    processingDependencies
   );
 
   if (isLoading) {

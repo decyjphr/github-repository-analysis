@@ -14,8 +14,15 @@ export function useAsyncDataProcessing<T, R>(
   // Update the processor ref when it changes
   processorRef.current = processor;
 
+  // Memoize dependencies to prevent hooks order changes
+  const stableDeps = useMemo(() => {
+    return Array.isArray(dependencies) ? dependencies : [];
+  }, [JSON.stringify(dependencies)]);
+  
+  const dataLength = useMemo(() => data?.length || 0, [data?.length]);
+  
   const processData = useCallback(async () => {
-    if (data.length === 0) {
+    if (dataLength === 0) {
       setProcessedData(null);
       setIsLoading(false);
       return;
@@ -44,7 +51,7 @@ export function useAsyncDataProcessing<T, R>(
     } finally {
       setIsLoading(false);
     }
-  }, [data.length, ...dependencies]);
+  }, [dataLength, stableDeps]);
 
   useEffect(() => {
     processData();

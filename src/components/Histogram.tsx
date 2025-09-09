@@ -151,10 +151,17 @@ export function Histogram({ data }: HistogramProps) {
     return bins;
   }, [data, stableSelectedColumn, stableScalingMethod, stableOptimizeData, applyScaling]);
 
+  // Memoize the dependencies array to prevent hooks order changes
+  const processingDependencies = useMemo(() => [
+    stableSelectedColumn, 
+    stableScalingMethod, 
+    stableOptimizeData
+  ], [stableSelectedColumn, stableScalingMethod, stableOptimizeData]);
+
   const { processedData: histogramData, isLoading, error } = useAsyncDataProcessing(
     data,
     generateHistogramData,
-    [stableSelectedColumn, stableScalingMethod, stableOptimizeData] // Stable dependencies
+    processingDependencies
   );
 
   const columnName = stableSelectedColumn.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
