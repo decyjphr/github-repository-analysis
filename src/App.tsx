@@ -36,6 +36,7 @@ function App() {
 
   const hasData = stableData.length > 0;
 
+  // Render empty state if no data - but keep all hooks above this point
   if (!hasData) {
     return (
       <div className="min-h-screen bg-background">
