@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,9 @@ function App() {
   const [repositoryData, setRepositoryData] = useKV<RepositoryData[]>('repository-data', []);
   const [activeTab, setActiveTab] = useState('summary');
 
+  // Stabilize data to prevent hook order changes during loading
+  const stableData = useMemo(() => repositoryData || [], [repositoryData]);
+
   const handleDataLoaded = (data: RepositoryData[]) => {
     setRepositoryData(data);
   };
@@ -25,7 +28,7 @@ function App() {
     setRepositoryData([]);
   };
 
-  const hasData = repositoryData.length > 0;
+  const hasData = stableData.length > 0;
 
   if (!hasData) {
     return (
@@ -57,9 +60,9 @@ function App() {
             </h1>
             <div className="flex items-center gap-4">
               <Badge variant="secondary" className="text-sm">
-                {repositoryData.length} repositories loaded
+                {stableData.length} repositories loaded
               </Badge>
-              {repositoryData.length > 5000 && (
+              {stableData.length > 5000 && (
                 <Badge variant="outline" className="text-accent">
                   <Lightning className="w-3 h-3 mr-1" />
                   Large dataset - Performance mode enabled
@@ -73,10 +76,10 @@ function App() {
               </button>
             </div>
           </div>
-          {repositoryData.length > 10000 && (
+          {stableData.length > 10000 && (
             <div className="text-right space-y-1">
               <p className="text-sm text-muted-foreground">
-                Large dataset detected ({repositoryData.length.toLocaleString()} repos)
+                Large dataset detected ({stableData.length.toLocaleString()} repos)
               </p>
               <p className="text-xs text-accent">
                 Charts are automatically optimized for performance
@@ -109,31 +112,31 @@ function App() {
             </TabsTrigger>
           </TabsList>
 
-          {repositoryData.length > 1000 && (
+          {stableData.length > 1000 && (
             <PerformanceIndicator 
-              dataSize={repositoryData.length}
-              optimizationsEnabled={repositoryData.length > 5000}
+              dataSize={stableData.length}
+              optimizationsEnabled={stableData.length > 5000}
             />
           )}
 
           <TabsContent value="summary" className="space-y-6">
-            <StatisticalSummary data={repositoryData} />
+            <StatisticalSummary data={stableData} />
           </TabsContent>
 
           <TabsContent value="size-analysis" className="space-y-6">
-            <SizeAnalysis data={repositoryData} />
+            <SizeAnalysis data={stableData} />
           </TabsContent>
 
           <TabsContent value="distributions" className="space-y-6">
-            <Histogram data={repositoryData} />
+            <Histogram data={stableData} />
           </TabsContent>
 
           <TabsContent value="age-size" className="space-y-6">
-            <AgeVsSizeScatter data={repositoryData} />
+            <AgeVsSizeScatter data={stableData} />
           </TabsContent>
 
           <TabsContent value="correlations" className="space-y-6">
-            <CommitVsCollaboratorScatter data={repositoryData} />
+            <CommitVsCollaboratorScatter data={stableData} />
           </TabsContent>
         </Tabs>
       </div>

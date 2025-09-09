@@ -16,7 +16,6 @@ interface CommitVsCollaboratorScatterProps {
 
 export function CommitVsCollaboratorScatter({ data }: CommitVsCollaboratorScatterProps) {
   const [optimizeData, setOptimizeData] = useState(data.length > 2000);
-  const [forceRender, setForceRender] = useState(false);
 
   const processScatterData = useCallback(async () => {
     const commitStats = calculateStatistics(data, 'Commit_Comment_Count');
@@ -52,11 +51,10 @@ export function CommitVsCollaboratorScatter({ data }: CommitVsCollaboratorScatte
     };
   }, [data, optimizeData]);
 
-  // Memoize the dependencies array to prevent hooks order changes
-  const processingDependencies = useMemo(() => [
-    optimizeData, 
-    forceRender
-  ], [optimizeData, forceRender]);
+  // Stable processing dependencies to prevent hooks order changes
+  const processingDependencies = [
+    optimizeData
+  ];
 
   const { processedData, isLoading, error } = useAsyncDataProcessing(
     data,
@@ -74,7 +72,7 @@ export function CommitVsCollaboratorScatter({ data }: CommitVsCollaboratorScatte
         <CardContent className="flex flex-col items-center justify-center py-12">
           <p className="text-destructive">Error processing data: {error.message}</p>
           <button 
-            onClick={() => setForceRender(prev => !prev)}
+            onClick={() => setOptimizeData(prev => !prev)}
             className="mt-4 text-sm bg-secondary text-secondary-foreground px-3 py-1 rounded hover:bg-secondary/90 transition-colors"
           >
             Retry

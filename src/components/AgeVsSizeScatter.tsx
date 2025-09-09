@@ -18,7 +18,6 @@ interface AgeVsSizeScatterProps {
 
 export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
   const [optimizeData, setOptimizeData] = useState(data.length > 1000);
-  const [forceRender, setForceRender] = useState(false);
   const [progressiveMode, setProgressiveMode] = useState(data.length > 5000);
   const [enableWebWorker, setEnableWebWorker] = useState(data.length > 10000);
   
@@ -101,11 +100,11 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
     return processedData;
   }, [data, optimizeData, colorRange, enableWebWorker, workerProcess]);
 
-  // Memoize the dependencies array to prevent hooks order changes
-  const processingDependencies = useMemo(() => [
+  // Stable processing dependencies to prevent hooks order changes
+  const processingDependencies = [
     optimizeData, 
     enableWebWorker
-  ], [optimizeData, enableWebWorker]);
+  ];
 
   const { processedData: rawScatterData, isLoading, error } = useAsyncDataProcessing(
     data,

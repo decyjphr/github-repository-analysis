@@ -36,7 +36,6 @@ export function Histogram({ data }: HistogramProps) {
   const [scalingMethod, setScalingMethod] = useState<ScalingMethod>('none');
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
   const [optimizeData, setOptimizeData] = useState(data.length > 5000);
-  const [forceRender, setForceRender] = useState(false);
 
   // Memoize stable values to prevent unnecessary re-renders
   const stableSelectedColumn = useMemo(() => selectedColumn, [selectedColumn]);
@@ -151,12 +150,12 @@ export function Histogram({ data }: HistogramProps) {
     return bins;
   }, [data, stableSelectedColumn, stableScalingMethod, stableOptimizeData, applyScaling]);
 
-  // Memoize the dependencies array to prevent hooks order changes
-  const processingDependencies = useMemo(() => [
+  // Stable processing dependencies to prevent hooks order changes
+  const processingDependencies = [
     stableSelectedColumn, 
     stableScalingMethod, 
     stableOptimizeData
-  ], [stableSelectedColumn, stableScalingMethod, stableOptimizeData]);
+  ];
 
   const { processedData: histogramData, isLoading, error } = useAsyncDataProcessing(
     data,

@@ -17,7 +17,7 @@ export function useAsyncDataProcessing<T, R>(
   // Memoize dependencies to prevent hooks order changes
   const stableDeps = useMemo(() => {
     return Array.isArray(dependencies) ? dependencies : [];
-  }, [JSON.stringify(dependencies)]);
+  }, dependencies);
   
   const dataLength = useMemo(() => data?.length || 0, [data?.length]);
   
