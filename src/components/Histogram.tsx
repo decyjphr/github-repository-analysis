@@ -67,10 +67,10 @@ export function Histogram({ data }: HistogramProps) {
     }
   };
 
-  const generateHistogramData = useCallback(async (column: string, dataToProcess: RepositoryData[]): Promise<HistogramBin[]> => {
+  const generateHistogramData = useCallback(async (): Promise<HistogramBin[]> => {
     // Filter and extract values
-    const rawValues = dataToProcess
-      .map(row => (row as any)[column])
+    const rawValues = data
+      .map(row => (row as any)[selectedColumn])
       .filter(val => typeof val === 'number' && !isNaN(val) && val >= 0);
 
     if (rawValues.length === 0) return [];
@@ -175,11 +175,11 @@ export function Histogram({ data }: HistogramProps) {
     });
 
     return bins;
-  }, [scalingMethod, optimizeData]);
+  }, [data, selectedColumn, scalingMethod, optimizeData]);
 
   const { processedData: histogramData, isLoading, error } = useAsyncDataProcessing(
     data,
-    useCallback(() => generateHistogramData(selectedColumn, data), [generateHistogramData, selectedColumn, data]),
+    generateHistogramData,
     [selectedColumn, scalingMethod, optimizeData, forceRender]
   );
 

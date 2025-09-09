@@ -20,6 +20,10 @@ self.onmessage = function(e) {
         result = processHistogramData(data, config);
         break;
       
+      case 'PROCESS_SCATTER_DATA':
+        result = processScatterData(data, config);
+        break;
+      
       case 'DEDUPLICATE_POINTS':
         result = deduplicatePoints(data, config.tolerance);
         break;
@@ -204,6 +208,124 @@ function applyScaling(values, method) {
     default:
       return values;
   }
+}
+
+function processScatterData(data, config) {
+  const { optimizeData, maxPoints, deduplicationTolerance } = config;
+  
+  // Calculate color range
+  const recordCounts = data.map(r => r.Record_Count);
+  const minRecord = Math.min(...recordCounts);
+  const maxRecord = Math.max(...recordCounts);
+  
+  // Process base data
+  let processedData = data
+    .filter(repo => repo.Created && repo.Repo_Size_mb >= 0)
+    .map(repo => {
+      const age = calculateAge(repo.Created);
+      return {
+        x: age,
+        y: repo.Repo_Size_mb,
+        age,
+        size: repo.Repo_Size_mb,
+        recordCount: repo.Record_Count,
+        name: `${repo.Org_Name}/${repo.Repo_Name}`,
+        color: getColorForValue(repo.Record_Count, minRecord, maxRecord)
+      };
+    })
+    .filter(item => item.age > 0 && item.size >= 0);
+
+  if (!optimizeData || processedData.length <= maxPoints) {
+    return processedData;
+  }
+
+  // Apply optimizations
+  if (processedData.length > maxPoints * 2) {
+    // For very large datasets, use LTTB downsampling
+    processedData = downsampleLTTB(processedData, maxPoints);
+  } else {
+    // Deduplicate overlapping points first
+    processedData = deduplicatePoints(processedData, deduplicationTolerance);
+    
+    // Then sample if still too many points
+    if (processedData.length > maxPoints) {
+      processedData = systematicSample(processedData, maxPoints);
+    }
+  }
+
+  return processedData;
+}
+
+function calculateAge(dateString) {
+  const createdDate = new Date(dateString);
+  const now = new Date();
+  return Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function getColorForValue(value, min, max) {
+  if (max === min) return '#3b82f6';
+  
+  const normalized = (value - min) / (max - min);
+  const hue = (1 - normalized) * 120; // Green to red (120 to 0)
+  const saturation = 70 + normalized * 30; // 70% to 100%
+  const lightness = 40 + normalized * 20; // 40% to 60%
+  
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
+function downsampleLTTB(data, targetPoints) {
+  if (data.length <= targetPoints || targetPoints < 3) {
+    return data;
+  }
+
+  const bucketSize = (data.length - 2) / (targetPoints - 2);
+  const downsampled = [data[0]]; // Always include first point
+
+  let bucketIndex = 0;
+  for (let i = 1; i < targetPoints - 1; i++) {
+    const avgRangeStart = Math.floor(bucketIndex * bucketSize) + 1;
+    const avgRangeEnd = Math.floor((bucketIndex + 1) * bucketSize) + 1;
+    
+    // Calculate average point for next bucket
+    let avgX = 0;
+    let avgY = 0;
+    let avgRangeLength = avgRangeEnd - avgRangeStart;
+    
+    for (let j = avgRangeStart; j < avgRangeEnd && j < data.length; j++) {
+      avgX += data[j].x;
+      avgY += data[j].y;
+    }
+    avgX /= avgRangeLength;
+    avgY /= avgRangeLength;
+
+    // Get current bucket range
+    const rangeStart = Math.floor(bucketIndex * bucketSize) + 1;
+    const rangeEnd = Math.floor((bucketIndex + 1) * bucketSize) + 1;
+
+    // Find point with largest triangle area
+    let maxArea = -1;
+    let maxAreaIndex = rangeStart;
+    
+    const prevPoint = downsampled[downsampled.length - 1];
+    
+    for (let j = rangeStart; j < rangeEnd && j < data.length; j++) {
+      const area = Math.abs(
+        (prevPoint.x - avgX) * (data[j].y - prevPoint.y) -
+        (prevPoint.x - data[j].x) * (avgY - prevPoint.y)
+      ) * 0.5;
+      
+      if (area > maxArea) {
+        maxArea = area;
+        maxAreaIndex = j;
+      }
+    }
+
+    downsampled.push(data[maxAreaIndex]);
+    bucketIndex++;
+  }
+
+  downsampled.push(data[data.length - 1]); // Always include last point
+  return downsampled;
 }
 
 function deduplicatePoints(data, tolerance = 1) {
