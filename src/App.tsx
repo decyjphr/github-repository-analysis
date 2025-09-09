@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -15,12 +15,7 @@ import { RepositoryData } from '@/types/repository';
 
 function App() {
   const [repositoryData, setRepositoryData] = useKV<RepositoryData[]>('repository-data', []);
-  const [hasData, setHasData] = useState(false);
-
-  // Update hasData when repositoryData changes
-  useEffect(() => {
-    setHasData(repositoryData.length > 0);
-  }, [repositoryData]);
+  const [activeTab, setActiveTab] = useState('summary');
 
   const handleDataLoaded = (data: RepositoryData[]) => {
     setRepositoryData(data);
@@ -30,7 +25,9 @@ function App() {
     setRepositoryData([]);
   };
 
-  if (!hasData || repositoryData.length === 0) {
+  const hasData = repositoryData.length > 0;
+
+  if (!hasData) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
@@ -88,7 +85,7 @@ function App() {
           )}
         </div>
 
-        <Tabs defaultValue="summary" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <Calculator className="w-4 h-4" />

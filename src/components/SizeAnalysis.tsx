@@ -17,7 +17,7 @@ export function SizeAnalysis({ data }: SizeAnalysisProps) {
   
   // Get repositories in each percentile range (showing top 10 from each group)
   const p10Repos = sortedData.slice(0, Math.min(10, p10Index + 1));
-  const p90Repos = sortedData.slice(Math.max(0, p90Index), Math.min(sortedData.length, p90Index + 10));
+  const p90Repos = sortedData.slice(Math.max(0, p90Index)).slice(-10); // Get the last 10 (largest)
 
   const formatSize = (sizeInMB: number) => {
     if (sizeInMB >= 1000) return `${(sizeInMB / 1000).toFixed(1)} GB`;

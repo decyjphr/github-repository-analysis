@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 // Hook for async data processing with loading states
 export function useAsyncDataProcessing<T, R>(
@@ -9,6 +9,10 @@ export function useAsyncDataProcessing<T, R>(
   const [processedData, setProcessedData] = useState<R | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const processorRef = useRef(processor);
+  
+  // Update the processor ref when it changes
+  processorRef.current = processor;
 
   const processData = useCallback(async () => {
     if (data.length === 0) {
@@ -25,7 +29,7 @@ export function useAsyncDataProcessing<T, R>(
       const result = await new Promise<R>((resolve, reject) => {
         setTimeout(async () => {
           try {
-            const processed = await processor();
+            const processed = await processorRef.current();
             resolve(processed);
           } catch (err) {
             reject(err);
@@ -40,7 +44,7 @@ export function useAsyncDataProcessing<T, R>(
     } finally {
       setIsLoading(false);
     }
-  }, [data, processor, ...dependencies]);
+  }, [data.length, ...dependencies]);
 
   useEffect(() => {
     processData();

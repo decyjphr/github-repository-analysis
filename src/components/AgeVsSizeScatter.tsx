@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Lightning, Eye, Gauge } from '@phosphor-icons/react';
 import { calculateAge, getColorForValue } from '@/lib/analytics';
@@ -21,6 +22,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
   const [progressiveMode, setProgressiveMode] = useState(data.length > 5000);
   const [enableWebWorker, setEnableWebWorker] = useState(data.length > 10000);
   
+  // Always call useWebWorker hook to avoid conditional hooks error
   const { processData: workerProcess, isProcessing: workerProcessing } = useWebWorker();
   
   // Memoize min/max values for color calculation
@@ -54,7 +56,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
         .filter(item => item.age > 0 && item.size >= 0);
     };
 
-    // Try web worker for large datasets
+    // Try web worker for large datasets if enabled
     if (enableWebWorker && data.length > 10000) {
       try {
         const processedData = await workerProcess('PROCESS_SCATTER_DATA', data, {
@@ -74,13 +76,17 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
     // Main thread processing with optimizations
     let processedData = baseProcessing();
     
+    // Early return for small datasets
     if (!optimizeData || processedData.length <= 1000) {
       return processedData;
     }
 
     // Progressive optimization strategies based on data size
-    if (processedData.length > 5000) {
-      // For very large datasets, use LTTB downsampling which preserves visual shape
+    if (processedData.length > 10000) {
+      // For extremely large datasets, use LTTB downsampling which preserves visual shape
+      processedData = downsampleLTTB(processedData, 1500);
+    } else if (processedData.length > 5000) {
+      // For very large datasets, use LTTB downsampling
       processedData = downsampleLTTB(processedData, 2000);
     } else if (processedData.length > 2000) {
       // For medium datasets, deduplicate overlapping points first
@@ -98,7 +104,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
   const { processedData: rawScatterData, isLoading, error } = useAsyncDataProcessing(
     data,
     processScatterData,
-    [optimizeData, forceRender, enableWebWorker]
+    [optimizeData, enableWebWorker]
   );
 
   // Progressive rendering for smooth loading experience
@@ -142,12 +148,17 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12">
           <p className="text-destructive">Error processing data: {error.message}</p>
-          <button 
-            onClick={() => setForceRender(prev => !prev)}
-            className="mt-4 text-sm bg-secondary text-secondary-foreground px-3 py-1 rounded hover:bg-secondary/90 transition-colors"
+          <Button 
+            onClick={() => {
+              setOptimizeData(true);
+              setProgressiveMode(data.length > 5000);
+              setEnableWebWorker(false); // Disable web worker on retry
+            }}
+            variant="outline"
+            className="mt-4"
           >
-            Retry
-          </button>
+            Reset and Retry
+          </Button>
         </CardContent>
       </Card>
     );

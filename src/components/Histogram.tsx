@@ -96,38 +96,7 @@ export function Histogram({ data }: HistogramProps) {
     const binWidth = (max - min) / binCount;
     const scaledBinWidth = scalingMethod !== 'none' ? (scaledMax - scaledMin) / binCount : binWidth;
 
-    // Use aggregation for better performance with large datasets
-    if (optimizeData && rawValues.length > 1000) {
-      const bins = aggregateDataIntoBins(
-        rawValues.map((val, idx) => ({ original: val, scaled: scaledValues[idx] })),
-        item => item.original,
-        binCount
-      );
-
-      return bins.map((bin, i) => {
-        const scaledStart = scalingMethod !== 'none' ? scaledMin + i * scaledBinWidth : bin.start;
-        const scaledEnd = scalingMethod !== 'none' ? scaledMin + (i + 1) * scaledBinWidth : bin.end;
-        
-        // Count scaled values in this bin
-        const scaledCount = scalingMethod !== 'none' 
-          ? bin.items.filter(item => item.scaled >= scaledStart && item.scaled < scaledEnd).length
-          : bin.count;
-
-        return {
-          range: `${bin.start.toFixed(1)}-${bin.end.toFixed(1)}`,
-          scaledRange: scalingMethod !== 'none' ? `${scaledStart.toFixed(3)}-${scaledEnd.toFixed(3)}` : `${bin.start.toFixed(1)}-${bin.end.toFixed(1)}`,
-          originalCount: bin.count,
-          scaledCount,
-          percentage: (bin.count / rawValues.length) * 100,
-          start: bin.start,
-          end: bin.end,
-          scaledStart,
-          scaledEnd
-        };
-      });
-    }
-
-    // Original implementation for smaller datasets
+    // Simple bins creation to avoid hangs with complex processing
     const bins = Array.from({ length: binCount }, (_, i) => {
       const originalStart = min + i * binWidth;
       const originalEnd = min + (i + 1) * binWidth;
@@ -180,7 +149,7 @@ export function Histogram({ data }: HistogramProps) {
   const { processedData: histogramData, isLoading, error } = useAsyncDataProcessing(
     data,
     generateHistogramData,
-    [selectedColumn, scalingMethod, optimizeData, forceRender]
+    [selectedColumn, scalingMethod, optimizeData]
   );
 
   const columnName = selectedColumn.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
@@ -198,11 +167,15 @@ export function Histogram({ data }: HistogramProps) {
         <CardContent className="flex flex-col items-center justify-center py-12">
           <p className="text-destructive">Error processing data: {error.message}</p>
           <Button 
-            onClick={() => setForceRender(prev => !prev)} 
+            onClick={() => {
+              setSelectedColumn(NUMERICAL_COLUMNS[0]);
+              setScalingMethod('none');
+              setOptimizeData(true);
+            }} 
             variant="outline" 
             className="mt-4"
           >
-            Retry
+            Reset and Retry
           </Button>
         </CardContent>
       </Card>
