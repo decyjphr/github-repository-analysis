@@ -1,4 +1,4 @@
-import { Spinner, TrendingUp } from '@phosphor-icons/react';
+import { CircleNotch, TrendingUp } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 
@@ -17,7 +17,7 @@ export function LoadingState({
     <Card>
       <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
         <div className="relative">
-          <Spinner className="w-8 h-8 text-primary animate-spin" />
+          <CircleNotch className="w-8 h-8 text-primary animate-spin" />
           <TrendingUp className="w-4 h-4 text-accent absolute top-1 right-1 animate-pulse" />
         </div>
         <div className="text-center space-y-2">

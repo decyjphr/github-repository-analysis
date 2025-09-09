@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 // Hook for async data processing with loading states
 export function useAsyncDataProcessing<T, R>(
   data: T[],
-  processor: (data: T[]) => Promise<R> | R,
+  processor: () => Promise<R> | R,
   dependencies: any[] = []
 ) {
   const [processedData, setProcessedData] = useState<R | null>(null);
@@ -13,6 +13,7 @@ export function useAsyncDataProcessing<T, R>(
   const processData = useCallback(async () => {
     if (data.length === 0) {
       setProcessedData(null);
+      setIsLoading(false);
       return;
     }
 
@@ -24,16 +25,17 @@ export function useAsyncDataProcessing<T, R>(
       const result = await new Promise<R>((resolve, reject) => {
         setTimeout(async () => {
           try {
-            const processed = await processor(data);
+            const processed = await processor();
             resolve(processed);
           } catch (err) {
             reject(err);
           }
-        }, 0);
+        }, 10);
       });
 
       setProcessedData(result);
     } catch (err) {
+      console.error('Data processing error:', err);
       setError(err instanceof Error ? err : new Error('Processing failed'));
     } finally {
       setIsLoading(false);
