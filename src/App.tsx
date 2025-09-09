@@ -18,7 +18,13 @@ function App() {
   const [activeTab, setActiveTab] = useState('summary');
 
   // Stabilize data to prevent hook order changes during loading
-  const stableData = useMemo(() => repositoryData || [], [repositoryData]);
+  const stableData = useMemo(() => {
+    // Ensure we always return a stable array reference
+    if (!repositoryData || !Array.isArray(repositoryData)) {
+      return [];
+    }
+    return repositoryData;
+  }, [repositoryData]);
 
   const handleDataLoaded = (data: RepositoryData[]) => {
     setRepositoryData(data);

@@ -16,8 +16,12 @@ export function useAsyncDataProcessing<T, R>(
 
   // Memoize dependencies to prevent hooks order changes
   const stableDeps = useMemo(() => {
-    return Array.isArray(dependencies) ? dependencies : [];
-  }, dependencies);
+    if (!Array.isArray(dependencies)) return [];
+    // Ensure stable string representation for comparison
+    return dependencies.map(dep => 
+      typeof dep === 'object' ? JSON.stringify(dep) : String(dep)
+    );
+  }, [JSON.stringify(dependencies)]);
   
   const dataLength = useMemo(() => data?.length || 0, [data?.length]);
   
@@ -51,7 +55,7 @@ export function useAsyncDataProcessing<T, R>(
     } finally {
       setIsLoading(false);
     }
-  }, [dataLength, stableDeps]);
+  }, [dataLength, stableDeps.join('|')]);
 
   useEffect(() => {
     processData();
