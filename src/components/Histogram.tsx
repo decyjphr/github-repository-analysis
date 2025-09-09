@@ -38,7 +38,12 @@ export function Histogram({ data }: HistogramProps) {
   const [optimizeData, setOptimizeData] = useState(data.length > 5000);
   const [forceRender, setForceRender] = useState(false);
 
-  const applyScaling = (values: number[], method: ScalingMethod): number[] => {
+  // Memoize stable values to prevent unnecessary re-renders
+  const stableSelectedColumn = useMemo(() => selectedColumn, [selectedColumn]);
+  const stableScalingMethod = useMemo(() => scalingMethod, [scalingMethod]);
+  const stableOptimizeData = useMemo(() => optimizeData, [optimizeData]);
+
+  const applyScaling = useCallback((values: number[], method: ScalingMethod): number[] => {
     if (method === 'none') return values;
     
     switch (method) {
@@ -65,21 +70,21 @@ export function Histogram({ data }: HistogramProps) {
       default:
         return values;
     }
-  };
+  }, []);
 
   const generateHistogramData = useCallback(async (): Promise<HistogramBin[]> => {
     // Filter and extract values
     const rawValues = data
-      .map(row => (row as any)[selectedColumn])
+      .map(row => (row as any)[stableSelectedColumn])
       .filter(val => typeof val === 'number' && !isNaN(val) && val >= 0);
 
     if (rawValues.length === 0) return [];
     
     // Apply feature scaling to the original property values
-    const scaledValues = applyScaling(rawValues, scalingMethod);
+    const scaledValues = applyScaling(rawValues, stableScalingMethod);
     
     // Use optimized bin calculation for large datasets
-    const binCount = optimizeData && rawValues.length > 1000 
+    const binCount = stableOptimizeData && rawValues.length > 1000 
       ? calculateOptimalBinCount(rawValues.length, 'freedman')
       : Math.max(5, Math.min(20, Math.ceil(Math.log2(rawValues.length) + 1)));
     
@@ -94,18 +99,18 @@ export function Histogram({ data }: HistogramProps) {
     const scaledMax = scaledSorted[scaledSorted.length - 1];
     
     const binWidth = (max - min) / binCount;
-    const scaledBinWidth = scalingMethod !== 'none' ? (scaledMax - scaledMin) / binCount : binWidth;
+    const scaledBinWidth = stableScalingMethod !== 'none' ? (scaledMax - scaledMin) / binCount : binWidth;
 
     // Simple bins creation to avoid hangs with complex processing
     const bins = Array.from({ length: binCount }, (_, i) => {
       const originalStart = min + i * binWidth;
       const originalEnd = min + (i + 1) * binWidth;
-      const scaledStart = scalingMethod !== 'none' ? scaledMin + i * scaledBinWidth : originalStart;
-      const scaledEnd = scalingMethod !== 'none' ? scaledMin + (i + 1) * scaledBinWidth : originalEnd;
+      const scaledStart = stableScalingMethod !== 'none' ? scaledMin + i * scaledBinWidth : originalStart;
+      const scaledEnd = stableScalingMethod !== 'none' ? scaledMin + (i + 1) * scaledBinWidth : originalEnd;
       
       return {
         range: `${originalStart.toFixed(1)}-${originalEnd.toFixed(1)}`,
-        scaledRange: scalingMethod !== 'none' ? `${scaledStart.toFixed(3)}-${scaledEnd.toFixed(3)}` : `${originalStart.toFixed(1)}-${originalEnd.toFixed(1)}`,
+        scaledRange: stableScalingMethod !== 'none' ? `${scaledStart.toFixed(3)}-${scaledEnd.toFixed(3)}` : `${originalStart.toFixed(1)}-${originalEnd.toFixed(1)}`,
         originalCount: 0,
         scaledCount: 0,
         percentage: 0,
@@ -123,7 +128,7 @@ export function Histogram({ data }: HistogramProps) {
     });
 
     // Group data by scaled value bins for scaled counts
-    if (scalingMethod !== 'none') {
+    if (stableScalingMethod !== 'none') {
       scaledValues.forEach((scaledValue) => {
         const binIndex = Math.min(Math.floor((scaledValue - scaledMin) / scaledBinWidth), binCount - 1);
         if (binIndex >= 0 && binIndex < binCount) {
@@ -144,16 +149,16 @@ export function Histogram({ data }: HistogramProps) {
     });
 
     return bins;
-  }, [data, selectedColumn, scalingMethod, optimizeData]);
+  }, [data, stableSelectedColumn, stableScalingMethod, stableOptimizeData, applyScaling]);
 
   const { processedData: histogramData, isLoading, error } = useAsyncDataProcessing(
     data,
     generateHistogramData,
-    [selectedColumn, scalingMethod, optimizeData]
+    [stableSelectedColumn, stableScalingMethod, stableOptimizeData] // Stable dependencies
   );
 
-  const columnName = selectedColumn.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
-  const scaledSuffix = scalingMethod !== 'none' ? ` (${scalingMethod} scaled)` : '';
+  const columnName = stableSelectedColumn.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
+  const scaledSuffix = stableScalingMethod !== 'none' ? ` (${stableScalingMethod} scaled)` : '';
 
   // Show loading state for large datasets
   if (isLoading) {
@@ -193,7 +198,7 @@ export function Histogram({ data }: HistogramProps) {
   }
 
   const renderChart = () => {
-    if (scalingMethod === 'none') {
+    if (stableScalingMethod === 'none') {
       // Regular single-axis chart when no scaling is applied
       return (
         <div className="h-80">
@@ -315,11 +320,11 @@ export function Histogram({ data }: HistogramProps) {
         <TableHeader>
           <TableRow>
             <TableHead>Original Range</TableHead>
-            {scalingMethod !== 'none' && (
+            {stableScalingMethod !== 'none' && (
               <TableHead>Scaled Range</TableHead>
             )}
             <TableHead className="text-right">Count (Original)</TableHead>
-            {scalingMethod !== 'none' && (
+            {stableScalingMethod !== 'none' && (
               <TableHead className="text-right">Count (Scaled)</TableHead>
             )}
             <TableHead className="text-right">Percentage</TableHead>
@@ -335,11 +340,11 @@ export function Histogram({ data }: HistogramProps) {
             return (
               <TableRow key={index}>
                 <TableCell className="font-mono text-sm">{bin.range}</TableCell>
-                {scalingMethod !== 'none' && (
+                {stableScalingMethod !== 'none' && (
                   <TableCell className="font-mono text-sm text-accent">{bin.scaledRange}</TableCell>
                 )}
                 <TableCell className="text-right">{bin.originalCount}</TableCell>
-                {scalingMethod !== 'none' && (
+                {stableScalingMethod !== 'none' && (
                   <TableCell className="text-right text-accent">{bin.scaledCount}</TableCell>
                 )}
                 <TableCell className="text-right">{bin.percentage.toFixed(1)}%</TableCell>
@@ -358,7 +363,7 @@ export function Histogram({ data }: HistogramProps) {
         <CardTitle className="flex items-center justify-between">
           <span>Distribution Analysis</span>
           <div className="flex items-center gap-4">
-            <Select value={selectedColumn} onValueChange={setSelectedColumn}>
+            <Select value={stableSelectedColumn} onValueChange={setSelectedColumn}>
               <SelectTrigger className="w-64">
                 <SelectValue />
               </SelectTrigger>
@@ -370,7 +375,7 @@ export function Histogram({ data }: HistogramProps) {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={scalingMethod} onValueChange={(value: ScalingMethod) => setScalingMethod(value)}>
+            <Select value={stableScalingMethod} onValueChange={(value: ScalingMethod) => setScalingMethod(value)}>
               <SelectTrigger className="w-48">
                 <SelectValue />
               </SelectTrigger>
@@ -391,7 +396,7 @@ export function Histogram({ data }: HistogramProps) {
             <Badge variant="outline">
               {histogramData.length} bins
             </Badge>
-            {optimizeData && (
+            {stableOptimizeData && (
               <Badge variant="outline" className="text-accent">
                 <Lightning className="w-3 h-3 mr-1" />
                 Optimized
@@ -401,7 +406,7 @@ export function Histogram({ data }: HistogramProps) {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Switch
-                checked={optimizeData}
+                checked={stableOptimizeData}
                 onCheckedChange={setOptimizeData}
                 id="optimize-data"
               />
@@ -444,19 +449,19 @@ export function Histogram({ data }: HistogramProps) {
         <div className="mt-4 space-y-2">
           <div className="text-sm text-muted-foreground text-center">
             Distribution of {columnName}{scaledSuffix} across {data.length} repositories
-            {optimizeData && data.length > 1000 && (
+            {stableOptimizeData && data.length > 1000 && (
               <span className="block text-xs text-accent mt-1">
                 Performance optimizations enabled for large dataset
               </span>
             )}
           </div>
-          {scalingMethod !== 'none' && (
+          {stableScalingMethod !== 'none' && (
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground text-center bg-muted p-2 rounded">
                 <strong>Value Scaling Applied:</strong> {
-                  scalingMethod === 'minmax' ? 'Min-Max normalization applied to original property values (scaled to 0-1 range)' :
-                  scalingMethod === 'zscore' ? 'Z-score standardization applied to original property values (mean=0, std=1)' :
-                  scalingMethod === 'robust' ? 'Robust scaling applied to original property values using median and IQR'
+                  stableScalingMethod === 'minmax' ? 'Min-Max normalization applied to original property values (scaled to 0-1 range)' :
+                  stableScalingMethod === 'zscore' ? 'Z-score standardization applied to original property values (mean=0, std=1)' :
+                  stableScalingMethod === 'robust' ? 'Robust scaling applied to original property values using median and IQR'
                   : ''
                 }. Shows distribution comparison between original and scaled value ranges.
               </div>

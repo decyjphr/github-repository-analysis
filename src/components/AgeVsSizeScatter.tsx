@@ -104,10 +104,18 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
   const { processedData: rawScatterData, isLoading, error } = useAsyncDataProcessing(
     data,
     processScatterData,
-    [optimizeData, enableWebWorker]
+    [optimizeData, enableWebWorker] // Stable dependencies
   );
 
   // Progressive rendering for smooth loading experience
+  const progressiveBatchSize = useMemo(() => {
+    return progressiveMode ? 100 : Math.min(rawScatterData?.length || 0, 1000);
+  }, [progressiveMode, rawScatterData?.length]);
+  
+  const progressiveDelay = useMemo(() => {
+    return progressiveMode ? 16 : 0; // 60fps target
+  }, [progressiveMode]);
+  
   const {
     visibleData: scatterData,
     renderedCount,
@@ -116,8 +124,8 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
     progress
   } = useProgressiveRendering(
     rawScatterData || [],
-    progressiveMode ? 100 : (rawScatterData?.length || 0),
-    progressiveMode ? 16 : 0 // 60fps target
+    progressiveBatchSize,
+    progressiveDelay
   );
 
   // Performance monitoring
