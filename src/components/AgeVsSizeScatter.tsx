@@ -19,7 +19,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
   const [optimizeData, setOptimizeData] = useState(data.length > 1000);
   const [forceRender, setForceRender] = useState(false);
   const [progressiveMode, setProgressiveMode] = useState(data.length > 5000);
-  const [useWebWorker, setUseWebWorker] = useState(data.length > 10000);
+  const [enableWebWorker, setEnableWebWorker] = useState(data.length > 10000);
   
   const { processData: workerProcess, isProcessing: workerProcessing } = useWebWorker();
   
@@ -55,7 +55,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
     };
 
     // Try web worker for large datasets
-    if (useWebWorker && data.length > 10000) {
+    if (enableWebWorker && data.length > 10000) {
       try {
         const processedData = await workerProcess('PROCESS_SCATTER_DATA', data, {
           optimizeData,
@@ -93,12 +93,12 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
     }
 
     return processedData;
-  }, [data, optimizeData, colorRange, useWebWorker, workerProcess]);
+  }, [data, optimizeData, colorRange, enableWebWorker, workerProcess]);
 
   const { processedData: rawScatterData, isLoading, error } = useAsyncDataProcessing(
     data,
     processScatterData,
-    [optimizeData, forceRender, useWebWorker]
+    [optimizeData, forceRender, enableWebWorker]
   );
 
   // Progressive rendering for smooth loading experience
@@ -220,8 +220,8 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
             {data.length > 5000 && (
               <div className="flex items-center gap-2">
                 <Switch
-                  checked={useWebWorker}
-                  onCheckedChange={setUseWebWorker}
+                  checked={enableWebWorker}
+                  onCheckedChange={setEnableWebWorker}
                   id="use-worker"
                 />
                 <label htmlFor="use-worker" className="text-xs text-muted-foreground">
@@ -268,7 +268,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
                 Optimized
               </Badge>
             )}
-            {useWebWorker && data.length > 10000 && (
+            {enableWebWorker && data.length > 10000 && (
               <Badge variant="outline" className="text-green-600">
                 <Lightning className="w-3 h-3 mr-1" />
                 Worker
@@ -284,12 +284,12 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
           onOptimize={() => {
             setOptimizeData(true);
             if (data.length > 5000) setProgressiveMode(true);
-            if (data.length > 10000) setUseWebWorker(true);
+            if (data.length > 10000) setEnableWebWorker(true);
           }}
           onProceed={() => {
             setOptimizeData(false);
             setProgressiveMode(false);
-            setUseWebWorker(false);
+            setEnableWebWorker(false);
           }}
         />
         
@@ -375,7 +375,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
                   from {data.length.toLocaleString()} total repositories
                 </span>
               )}
-              {useWebWorker && data.length > 10000 && (
+              {enableWebWorker && data.length > 10000 && (
                 <span className="text-green-600">
                   • Processed with web worker for better performance
                 </span>
