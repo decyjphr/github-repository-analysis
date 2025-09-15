@@ -3,7 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  Chart as ChartJS,
+  LinearScale,
+  PointElement,
+  Tooltip,
+  Legend,
+  ScatterController,
+} from 'chart.js';
+import { Scatter } from 'react-chartjs-2';
 import { Lightning, Eye, Gauge } from '@phosphor-icons/react';
 import { calculateAge, getColorForValue } from '@/lib/analytics';
 import { RepositoryData } from '@/types/repository';
@@ -12,18 +20,25 @@ import { useWebWorker } from '@/hooks/useWebWorker';
 import { LoadingState, DataSizeWarning } from '@/components/LoadingComponents';
 import { sampleData, deduplicatePoints, downsampleLTTB } from '@/lib/dataOptimization';
 
+// Register ChartJS components
+ChartJS.register(LinearScale, PointElement, Tooltip, Legend, ScatterController);
+
 interface AgeVsSizeScatterProps {
   data: RepositoryData[];
 }
 
 export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
+  // ALL STATE HOOKS FIRST - called unconditionally
   const [optimizeData, setOptimizeData] = useState(data.length > 1000);
   const [progressiveMode, setProgressiveMode] = useState(data.length > 5000);
   const [enableWebWorker, setEnableWebWorker] = useState(data.length > 10000);
-  
-  // Always call useWebWorker hook to avoid conditional hooks error
+
+  // ALL REF HOOKS - called unconditionally
+  const renderStartTime = useRef<number>(Date.now());
+
+  // ALL OTHER HOOKS - called unconditionally
   const { processData: workerProcess, isProcessing: workerProcessing } = useWebWorker();
-  
+
   // Memoize min/max values for color calculation
   const colorRange = useMemo(() => {
     const recordCounts = data.map(r => r.Record_Count);
@@ -43,7 +58,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
         .map(repo => {
           const age = calculateAge(repo.Created);
           return {
-            x: age,
+            x: age, // Chart.js expects x/y format
             y: repo.Repo_Size_mb,
             age,
             size: repo.Repo_Size_mb,
@@ -65,7 +80,11 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
         });
         
         if (processedData && Array.isArray(processedData)) {
-          return processedData;
+          return processedData.map(item => ({
+            ...item,
+            x: item.age || item.x,
+            y: item.size || item.y
+          }));
         }
       } catch (error) {
         console.warn('Web worker failed, falling back to main thread:', error);
@@ -134,7 +153,6 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
   );
 
   // Performance monitoring
-  const renderStartTime = useRef<number>(Date.now());
   useEffect(() => {
     if (isComplete && !isLoading) {
       const renderTime = Date.now() - renderStartTime.current;
@@ -143,6 +161,94 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
       }
     }
   }, [isComplete, isLoading, scatterData?.length]);
+
+  // Chart.js configuration
+  const chartData = useMemo(() => {
+    if (!scatterData || scatterData.length === 0) return {
+      datasets: []
+    };
+    
+    return {
+      datasets: [
+        {
+          label: 'Repositories',
+          data: scatterData,
+          backgroundColor: scatterData.map(point => point.color || 'rgba(54, 162, 235, 0.6)'),
+          borderColor: scatterData.map(point => point.color || 'rgba(54, 162, 235, 1)'),
+          borderWidth: 1,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        }
+      ]
+    };
+  }, [scatterData]);
+
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        callbacks: {
+          title: (context: any) => {
+            const point = context[0]?.raw;
+            return point?.name || 'Repository';
+          },
+          label: (context: any) => {
+            const point = context.raw;
+            return [
+              `Age: ${point?.age?.toLocaleString() || '0'} days`,
+              `Size: ${point?.size?.toLocaleString() || '0'} MB`,
+              `Records: ${point?.recordCount?.toLocaleString() || '0'}`
+            ];
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        type: 'linear' as const,
+        position: 'bottom' as const,
+        title: {
+          display: true,
+          text: 'Age (days)'
+        },
+        ticks: {
+          callback: function(value: any) {
+            return value?.toLocaleString() || '0';
+          }
+        }
+      },
+      y: {
+        type: 'linear' as const,
+        title: {
+          display: true,
+          text: 'Size (MB)'
+        },
+        ticks: {
+          callback: function(value: any) {
+            return value?.toLocaleString() || '0';
+          }
+        }
+      }
+    },
+    interaction: {
+      intersect: false,
+      mode: 'nearest' as const
+    }
+  }), []);
+
+  // Performance optimization indicators
+  const getPerformanceLevel = () => {
+    if (data.length > 10000) return 'high';
+    if (data.length > 5000) return 'medium';
+    if (data.length > 1000) return 'low';
+    return 'none';
+  };
+
+  const performanceLevel = getPerformanceLevel();
 
   if (isLoading || workerProcessing) {
     return (
@@ -186,31 +292,6 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
       </Card>
     );
   }
-
-  // Memoized custom dot component for better performance
-  const CustomDot = useMemo(() => {
-    return ({ cx, cy, payload }: any) => (
-      <circle
-        cx={cx}
-        cy={cy}
-        r={3}
-        fill={payload.color}
-        stroke="white"
-        strokeWidth={0.5}
-        style={{ opacity: 0.8 }}
-      />
-    );
-  }, []);
-
-  // Performance optimization indicators
-  const getPerformanceLevel = () => {
-    if (data.length > 10000) return 'high';
-    if (data.length > 5000) return 'medium';
-    if (data.length > 1000) return 'low';
-    return 'none';
-  };
-
-  const performanceLevel = getPerformanceLevel();
 
   return (
     <Card>
@@ -333,60 +414,7 @@ export function AgeVsSizeScatter({ data }: AgeVsSizeScatterProps) {
         )}
         
         <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart
-              margin={{ top: 20, right: 30, bottom: 40, left: 40 }}
-              data={scatterData}
-            >
-              <CartesianGrid 
-                strokeDasharray="3 3" 
-                stroke="oklch(0.88 0.02 85)" 
-                opacity={0.5}
-              />
-              <XAxis
-                type="number"
-                dataKey="age"
-                name="Age (days)"
-                fontSize={12}
-                stroke="oklch(0.55 0.12 270)"
-                label={{ value: 'Age (days)', position: 'insideBottom', offset: -10 }}
-                tickFormatter={(value) => value.toLocaleString()}
-              />
-              <YAxis
-                type="number"
-                dataKey="size"
-                name="Size (MB)"
-                fontSize={12}
-                stroke="oklch(0.55 0.12 270)"
-                label={{ value: 'Size (MB)', angle: -90, position: 'insideLeft' }}
-                tickFormatter={(value) => value.toLocaleString()}
-              />
-              <Tooltip
-                animationDuration={150}
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    return (
-                      <div className="bg-background border border-border rounded-lg p-3 shadow-lg">
-                        <p className="font-medium text-sm">{data.name}</p>
-                        <p className="text-xs text-muted-foreground">Age: {data.age.toLocaleString()} days</p>
-                        <p className="text-xs text-muted-foreground">Size: {data.size.toLocaleString()} MB</p>
-                        <p className="text-xs text-muted-foreground">Records: {data.recordCount.toLocaleString()}</p>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              <Scatter 
-                name="Repositories" 
-                data={scatterData} 
-                shape={<CustomDot />}
-                isAnimationActive={!progressiveMode || isComplete}
-                animationDuration={progressiveMode ? 200 : 400}
-              />
-            </ScatterChart>
-          </ResponsiveContainer>
+          <Scatter data={chartData} options={chartOptions} />
         </div>
         
         {/* Performance summary */}
