@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart } from 'recharts';
-import { BarChart as BarChartIcon, Table as TableIcon, Calculator, Lightning } from '@phosphor-icons/react';
+import { ChartBar as BarChartIcon, Table as TableIcon, Calculator, Lightning } from '@phosphor-icons/react';
 import { RepositoryData, NUMERICAL_COLUMNS } from '@/types/repository';
 import { useAsyncDataProcessing } from '@/hooks/useDataProcessing';
 import { LoadingState, DataSizeWarning } from '@/components/LoadingComponents';
@@ -36,11 +36,20 @@ export function Histogram({ data }: HistogramProps) {
   const [scalingMethod, setScalingMethod] = useState<ScalingMethod>('none');
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
   const [optimizeData, setOptimizeData] = useState(data.length > 5000);
+  const [useLogScale, setUseLogScale] = useState(false);
 
   // Memoize stable values to prevent unnecessary re-renders
   const stableSelectedColumn = useMemo(() => selectedColumn, [selectedColumn]);
   const stableScalingMethod = useMemo(() => scalingMethod, [scalingMethod]);
   const stableOptimizeData = useMemo(() => optimizeData, [optimizeData]);
+  const stableUseLogScale = useMemo(() => useLogScale, [useLogScale]);
+
+  // Reset log scale when scaling method changes from 'none' to something else
+  useEffect(() => {
+    if (scalingMethod !== 'none' && useLogScale) {
+      setUseLogScale(false);
+    }
+  }, [scalingMethod, useLogScale]);
 
   const applyScaling = useCallback((values: number[], method: ScalingMethod): number[] => {
     if (method === 'none') return values;
@@ -204,15 +213,23 @@ export function Histogram({ data }: HistogramProps) {
   }
 
   const renderChart = () => {
+    // When using log scale, we need to handle zero values by replacing them with a small positive number
+    const chartData = stableUseLogScale && stableScalingMethod === 'none' 
+      ? histogramData.map(bin => ({
+          ...bin,
+          originalCount: bin.originalCount === 0 ? 0.1 : bin.originalCount
+        }))
+      : histogramData;
+
     if (stableScalingMethod === 'none') {
       // Regular single-axis chart when no scaling is applied
       return (
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={histogramData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.88 0.02 85)" />
               <XAxis 
-                dataKey="range" 
+                dataKey="range"
                 angle={-45}
                 textAnchor="end"
                 height={80}
@@ -222,9 +239,23 @@ export function Histogram({ data }: HistogramProps) {
               <YAxis 
                 fontSize={12}
                 stroke="oklch(0.55 0.12 270)"
+                scale={stableUseLogScale ? "log" : "linear"}
+                domain={stableUseLogScale ? [0.1, 'auto'] : [0, 'auto']}
+                allowDataOverflow={false}
+                label={{ 
+                  value: stableUseLogScale ? 'Count (log₁₀ scale)' : 'Count', 
+                  angle: -90, 
+                  position: 'insideLeft' 
+                }}
               />
               <Tooltip 
-                formatter={(value, name) => [value, 'Count']}
+                formatter={(value, name) => {
+                  // For log scale, show a note when count is 0
+                  if (stableUseLogScale && value === 0.1) {
+                    return ['0 (shown as 0.1 for log scale)', 'Count'];
+                  }
+                  return [value, 'Count'];
+                }}
                 labelFormatter={(label) => `Range: ${label}`}
                 contentStyle={{
                   backgroundColor: 'oklch(0.98 0 0)',
@@ -247,7 +278,7 @@ export function Histogram({ data }: HistogramProps) {
       return (
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={histogramData} margin={{ top: 20, right: 60, left: 20, bottom: 60 }}>
+            <ComposedChart data={chartData} margin={{ top: 20, right: 60, left: 20, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.88 0.02 85)" />
               <XAxis 
                 dataKey="range" 
@@ -420,6 +451,18 @@ export function Histogram({ data }: HistogramProps) {
                 Performance Mode
               </label>
             </div>
+            {stableScalingMethod === 'none' && (
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={stableUseLogScale}
+                  onCheckedChange={setUseLogScale}
+                  id="log-scale"
+                />
+                <label htmlFor="log-scale" className="text-sm text-muted-foreground">
+                  Log Y-Axis
+                </label>
+              </div>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -461,6 +504,11 @@ export function Histogram({ data }: HistogramProps) {
               </span>
             )}
           </div>
+          {stableUseLogScale && stableScalingMethod === 'none' && (
+            <div className="text-xs text-muted-foreground text-center bg-orange-50 p-2 rounded border border-orange-200">
+              <strong>Logarithmic Y-Axis:</strong> Y-axis (count values) are displayed on a log₁₀ scale for better visualization of wide-range count distributions. Empty bins (count = 0) are shown as 0.1 for visibility.
+            </div>
+          )}
           {stableScalingMethod !== 'none' && (
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground text-center bg-muted p-2 rounded">
